@@ -1,5 +1,5 @@
 services:
-  backend:
+  lisalikes-backend:
     build: ./backend
     container_name: spotify_curator_backend
     restart: unless-stopped
@@ -19,11 +19,11 @@ services:
     ports:
       - "8000:8000"
 
-  frontend:
+  lisalikes-frontend:
     build: ./frontend
     container_name: spotify_curator_frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - lisalikes-backend
     ports:
       - "8080:80"
