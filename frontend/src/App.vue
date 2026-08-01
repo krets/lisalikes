@@ -125,6 +125,13 @@ watch(search, () => {
   searchDebounce = setTimeout(loadTracks, 250);
 });
 
+watch(syncStatus, (next, prev) => {
+  if (prev === "syncing" && next !== "syncing") {
+    loadTracks();
+    loadRules();
+  }
+});
+
 const lastSyncedLabel = computed(() => {
   if (!lastSyncTime.value) return "Never synced";
   const d = new Date(Number(lastSyncTime.value) * 1000);
