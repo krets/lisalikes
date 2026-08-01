@@ -105,11 +105,13 @@ async def fetch_all_liked_tracks() -> list[dict]:
 
 
 async def fetch_artists(artist_ids: list[str]) -> list[dict]:
+    # Spotify's batched "Several Artists" endpoint (GET /artists?ids=...) returns
+    # 403 for apps in Development Mode without Extended Quota approval. The
+    # singular endpoint is still reachable, so fetch one at a time instead.
     artists = []
-    for i in range(0, len(artist_ids), 50):
-        batch = artist_ids[i : i + 50]
-        resp = await _request("GET", "/artists", params={"ids": ",".join(batch)})
-        artists.extend(resp.json().get("artists", []))
+    for artist_id in artist_ids:
+        resp = await _request("GET", f"/artists/{artist_id}")
+        artists.append(resp.json())
     return artists
 
 
