@@ -11,7 +11,9 @@ const rulesOpen = ref(false);
 const blockedArtists = ref([]);
 const blockedGenres = ref([]);
 const newGenre = ref("");
+const undoToast = ref(null);
 let pollInterval = null;
+let undoTimeout = null;
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search);
@@ -90,18 +92,40 @@ async function toggleVisibility(track) {
 }
 
 async function blockArtist(track) {
+  const confirmed = window.confirm(
+    `Block "${track.artist_name}" from this playlist? All their tracks will be excluded from future syncs.`
+  );
+  if (!confirmed) return;
+
   await apiFetch("/api/rules/blocked-artists", {
     method: "POST",
     body: JSON.stringify({ artist_id: track.artist_id, name: track.artist_name }),
   });
   await loadRules();
   await loadTracks();
+  showUndoToast(track.artist_id, track.artist_name);
 }
 
 async function unblockArtist(artistId) {
   await apiFetch(`/api/rules/blocked-artists/${artistId}`, { method: "DELETE" });
   await loadRules();
   await loadTracks();
+}
+
+function showUndoToast(artistId, artistName) {
+  clearTimeout(undoTimeout);
+  undoToast.value = { artistId, artistName };
+  undoTimeout = setTimeout(() => {
+    undoToast.value = null;
+  }, 6000);
+}
+
+async function undoBlock() {
+  if (!undoToast.value) return;
+  clearTimeout(undoTimeout);
+  const { artistId } = undoToast.value;
+  undoToast.value = null;
+  await unblockArtist(artistId);
 }
 
 async function addBlockedGenre() {
@@ -293,6 +317,17 @@ const lastSyncedLabel = computed(() => {
           </li>
         </ul>
       </div>
+    </div>
+
+    <!-- Undo toast -->
+    <div
+      v-if="undoToast"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 flex items-center gap-3 shadow-lg z-20"
+    >
+      <span class="text-sm">Blocked {{ undoToast.artistName }}</span>
+      <button @click="undoBlock" class="text-sm font-medium text-spotify hover:brightness-110">
+        Undo
+      </button>
     </div>
   </div>
 </template>
