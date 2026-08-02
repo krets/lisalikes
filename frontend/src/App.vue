@@ -123,6 +123,14 @@ function formatAddedAt(iso) {
   return isNaN(d) ? "" : d.toLocaleDateString();
 }
 
+function formatDuration(ms) {
+  if (!ms && ms !== 0) return "";
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 async function toggleSyncPaused() {
   const next = !syncPaused.value;
   await apiFetch(`/api/state/sync-paused?paused=${next}`, { method: "POST" });
@@ -564,7 +572,9 @@ const sortedTracks = computed(() => {
               class="flex justify-between items-center gap-2 text-sm bg-gray-800 rounded px-2 py-1.5"
             >
               <div class="min-w-0">
-                <div class="truncate">{{ t.album_name }}</div>
+                <div class="truncate">
+                  {{ t.album_name }}<span v-if="formatDuration(t.duration_ms)"> · {{ formatDuration(t.duration_ms) }}</span>
+                </div>
                 <div class="text-[10px] text-gray-400">Added {{ formatAddedAt(t.added_at) }}</div>
               </div>
               <div class="flex items-center gap-2 shrink-0">

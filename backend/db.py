@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     image_url TEXT,
     artist_id TEXT,
     added_at TEXT,
+    duration_ms INTEGER,
     is_hidden INTEGER DEFAULT 0
 );
 
@@ -39,7 +40,14 @@ CREATE TABLE IF NOT EXISTS blocked_genres (
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
+
+
+def _migrate(conn):
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(tracks)")}
+    if "duration_ms" not in columns:
+        conn.execute("ALTER TABLE tracks ADD COLUMN duration_ms INTEGER")
 
 
 @contextmanager

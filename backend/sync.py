@@ -44,14 +44,15 @@ async def _ingest():
 
             conn.execute(
                 """
-                INSERT INTO tracks (uri, title, album_name, image_url, artist_id, added_at, is_hidden)
-                VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT is_hidden FROM tracks WHERE uri = ?), 0))
+                INSERT INTO tracks (uri, title, album_name, image_url, artist_id, added_at, duration_ms, is_hidden)
+                VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT is_hidden FROM tracks WHERE uri = ?), 0))
                 ON CONFLICT(uri) DO UPDATE SET
                     title = excluded.title,
                     album_name = excluded.album_name,
                     image_url = excluded.image_url,
                     artist_id = excluded.artist_id,
-                    added_at = excluded.added_at
+                    added_at = excluded.added_at,
+                    duration_ms = excluded.duration_ms
                 """,
                 (
                     track["uri"],
@@ -60,6 +61,7 @@ async def _ingest():
                     image_url,
                     artist_id,
                     item["added_at"],
+                    track.get("duration_ms"),
                     track["uri"],
                 ),
             )
