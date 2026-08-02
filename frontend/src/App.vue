@@ -3,6 +3,8 @@ import { ref, computed, onMounted, watch } from "vue";
 
 const token = ref(localStorage.getItem("token") || "");
 const tracks = ref([]);
+const allTracks = ref([]);
+const duplicatesOpen = ref(false);
 const search = ref("");
 const syncPaused = ref(false);
 const syncStatus = ref("idle");
@@ -33,6 +35,7 @@ onMounted(() => {
     loadState();
     loadTracks();
     loadRules();
+    loadAllTracks();
     pollInterval = setInterval(loadState, 15000);
   }
 });
@@ -89,6 +92,35 @@ async function loadRules() {
   const r = await apiFetch("/api/rules");
   blockedArtists.value = r.blocked_artists;
   blockedGenres.value = r.blocked_genres;
+}
+
+async function loadAllTracks() {
+  allTracks.value = await apiFetch("/api/tracks");
+}
+
+function openDuplicates() {
+  duplicatesOpen.value = true;
+  loadAllTracks();
+}
+
+async function keepOnlyThisVersion(group, chosen) {
+  for (const t of group) {
+    const shouldHide = t.uri !== chosen.uri;
+    if (!!t.is_hidden !== shouldHide) {
+      t.is_hidden = shouldHide ? 1 : 0;
+      await apiFetch("/api/tracks/visibility", {
+        method: "POST",
+        body: JSON.stringify({ uri: t.uri, is_hidden: shouldHide }),
+      });
+    }
+  }
+  pendingChanges.value = true;
+  await loadTracks();
+}
+
+function formatAddedAt(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleDateString();
 }
 
 async function toggleSyncPaused() {
@@ -213,6 +245,7 @@ watch(syncStatus, (next, prev) => {
   if (prev === "syncing" && next !== "syncing") {
     loadTracks();
     loadRules();
+    loadAllTracks();
     if (next === "idle") {
       pendingChanges.value = false;
     }
@@ -230,6 +263,18 @@ const syncHelpText = computed(() =>
     ? "Automatic syncing is paused — use Sync Now to sync manually."
     : "Auto-syncs every 4 hours. Toggle off to pause the automatic schedule."
 );
+
+const duplicateGroups = computed(() => {
+  const groups = new Map();
+  for (const t of allTracks.value) {
+    const key = `${t.artist_id || ""}::${(t.title || "").trim().toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+  return [...groups.values()]
+    .filter((g) => g.length > 1)
+    .sort((a, b) => a[0].title.localeCompare(b[0].title));
+});
 
 const sortedTracks = computed(() => {
   if (!sortKey.value) return tracks.value;
@@ -270,6 +315,13 @@ const sortedTracks = computed(() => {
           class="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm"
         >
           Rules
+        </button>
+        <button
+          @click="openDuplicates"
+          class="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm"
+        >
+          Duplicates
+          <span v-if="duplicateGroups.length" class="text-amber-400">({{ duplicateGroups.length }})</span>
         </button>
         <button
           @click="triggerSyncNow"
@@ -480,6 +532,58 @@ const sortedTracks = computed(() => {
             <button @click="removeBlockedGenre(g)" class="text-gray-400 hover:text-red-400">✕</button>
           </li>
         </ul>
+      </div>
+    </div>
+
+    <!-- Duplicates modal -->
+    <div
+      v-if="duplicatesOpen"
+      class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-10"
+      @click.self="duplicatesOpen = false"
+    >
+      <div class="bg-gray-900 rounded-lg p-5 w-full max-w-lg max-h-[80vh] overflow-y-auto border border-gray-800">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-semibold">Possible Duplicates</h2>
+          <button @click="duplicatesOpen = false" class="text-gray-400 hover:text-white">✕</button>
+        </div>
+        <p class="text-xs text-gray-400 mb-4">
+          Same title and artist, but different Spotify tracks (e.g. a reissue or a re-ingested
+          album). Pick the version to keep — the others will be set to Hidden.
+        </p>
+
+        <p v-if="!duplicateGroups.length" class="text-sm text-gray-400">No duplicates found.</p>
+
+        <div v-for="group in duplicateGroups" :key="group[0].artist_id + '::' + group[0].title" class="mb-4">
+          <h3 class="text-sm font-medium mb-1 truncate">
+            {{ group[0].title }} — {{ group[0].artist_name }}
+          </h3>
+          <ul class="space-y-1">
+            <li
+              v-for="t in group"
+              :key="t.uri"
+              class="flex justify-between items-center gap-2 text-sm bg-gray-800 rounded px-2 py-1.5"
+            >
+              <div class="min-w-0">
+                <div class="truncate">{{ t.album_name }}</div>
+                <div class="text-[10px] text-gray-400">Added {{ formatAddedAt(t.added_at) }}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span
+                  class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded"
+                  :class="t.is_hidden ? 'text-gray-400 bg-gray-700' : 'text-spotify bg-spotify/10'"
+                >
+                  {{ t.is_hidden ? "Hidden" : "Included" }}
+                </span>
+                <button
+                  @click="keepOnlyThisVersion(group, t)"
+                  class="text-xs text-gray-400 hover:text-spotify underline"
+                >
+                  Keep only this
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
 
