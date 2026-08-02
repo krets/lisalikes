@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 import smtplib
@@ -29,6 +30,14 @@ scheduler = AsyncIOScheduler()
 @app.on_event("startup")
 async def startup():
     init_db()
+
+    playlist_id = get_state("target_playlist_id")
+    if playlist_id and not get_state("target_playlist_name"):
+        try:
+            set_state("target_playlist_name", await spotify_client.fetch_playlist_name(playlist_id))
+        except Exception:
+            logging.exception("Couldn't backfill playlist name for %s", playlist_id)
+
     scheduler.add_job(sync.run_sync, "interval", hours=4, id="sync_job")
     scheduler.start()
 
@@ -86,8 +95,13 @@ class TargetPlaylistRequest(BaseModel):
 
 
 @app.post("/api/admin/target-playlist")
-def set_target_playlist(req: TargetPlaylistRequest, _: bool = Depends(auth.require_admin)):
+async def set_target_playlist(req: TargetPlaylistRequest, _: bool = Depends(auth.require_admin)):
     set_state("target_playlist_id", req.playlist_id)
+    try:
+        name = await spotify_client.fetch_playlist_name(req.playlist_id)
+        set_state("target_playlist_name", name)
+    except Exception:
+        logging.exception("Couldn't fetch playlist name for %s", req.playlist_id)
     return {"ok": True}
 
 
@@ -118,6 +132,8 @@ def get_app_state(user=Depends(auth.require_user)):
         "sync_paused": get_state("sync_paused", "0") == "1",
         "last_sync_time": get_state("last_sync_time"),
         "sync_status": get_state("sync_status", "idle"),
+        "target_playlist_id": get_state("target_playlist_id"),
+        "target_playlist_name": get_state("target_playlist_name"),
     }
 
 

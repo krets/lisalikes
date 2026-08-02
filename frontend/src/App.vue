@@ -9,6 +9,8 @@ const search = ref("");
 const syncPaused = ref(false);
 const syncStatus = ref("idle");
 const lastSyncTime = ref(null);
+const playlistId = ref(null);
+const playlistName = ref(null);
 const rulesOpen = ref(false);
 const blockedArtists = ref([]);
 const blockedGenres = ref([]);
@@ -68,6 +70,8 @@ async function loadState() {
   syncPaused.value = s.sync_paused;
   syncStatus.value = s.sync_status;
   lastSyncTime.value = s.last_sync_time;
+  playlistId.value = s.target_playlist_id;
+  playlistName.value = s.target_playlist_name;
 }
 
 let searchRequestId = 0;
@@ -266,6 +270,10 @@ const lastSyncedLabel = computed(() => {
   return `Last synced: ${d.toLocaleString()}`;
 });
 
+const playlistUrl = computed(() =>
+  playlistId.value ? `https://open.spotify.com/playlist/${playlistId.value}` : null
+);
+
 const syncHelpText = computed(() =>
   syncPaused.value
     ? "Automatic syncing is paused — use Sync Now to sync manually."
@@ -309,6 +317,15 @@ const sortedTracks = computed(() => {
     <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
       <div>
         <h1 class="text-2xl font-semibold">Playlist Curator</h1>
+        <a
+          v-if="playlistUrl"
+          :href="playlistUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-sm text-spotify hover:underline inline-block"
+        >
+          {{ playlistName || "Open target playlist" }} ↗
+        </a>
         <p class="text-sm text-gray-400">
           {{ syncStatus === "syncing" ? "Syncing..." : lastSyncedLabel }}
         </p>

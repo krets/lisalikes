@@ -115,6 +115,11 @@ async def fetch_artists(artist_ids: list[str]) -> list[dict]:
     return artists
 
 
+async def fetch_playlist_name(playlist_id: str) -> str:
+    resp = await _request("GET", f"/playlists/{playlist_id}", params={"fields": "name"})
+    return resp.json()["name"]
+
+
 async def publish_playlist(playlist_id: str, uris: list[str]):
     first_batch, rest = uris[:100], uris[100:]
 
