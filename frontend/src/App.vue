@@ -220,6 +220,9 @@ const lastSyncedLabel = computed(() => {
           <span>{{ syncPaused ? "Paused" : "Active" }}</span>
           <button
             @click="toggleSyncPaused"
+            role="switch"
+            :aria-checked="!syncPaused"
+            aria-label="Automatic syncing"
             class="w-11 h-6 rounded-full relative transition-colors"
             :class="syncPaused ? 'bg-gray-600' : 'bg-spotify'"
           >
@@ -309,6 +312,9 @@ const lastSyncedLabel = computed(() => {
                 @click="toggleVisibility(t)"
                 :disabled="isArtistBlocked(t)"
                 :title="isArtistBlocked(t) ? 'Artist is blocked — this toggle has no effect' : ''"
+                role="switch"
+                :aria-checked="!t.is_hidden"
+                :aria-label="`Include ${t.title} in playlist`"
                 class="w-11 h-6 rounded-full relative transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 :class="t.is_hidden ? 'bg-gray-600' : 'bg-spotify'"
               >
