@@ -13,8 +13,13 @@ const blockedGenres = ref([]);
 const newGenre = ref("");
 const undoToast = ref(null);
 const searching = ref(false);
+const pendingChanges = ref(false);
+const sortKey = ref(null);
+const sortDir = ref("asc");
+const columnWidths = ref({ title: 260, artist: 180, album: 180 });
 let pollInterval = null;
 let undoTimeout = null;
+let resizing = null;
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search);
@@ -103,6 +108,7 @@ async function toggleVisibility(track) {
     method: "POST",
     body: JSON.stringify({ uri: track.uri, is_hidden: !!track.is_hidden }),
   });
+  pendingChanges.value = true;
 }
 
 async function blockArtist(track) {
@@ -117,6 +123,7 @@ async function blockArtist(track) {
   });
   await loadRules();
   await loadTracks();
+  pendingChanges.value = true;
   showUndoToast(track.artist_id, track.artist_name);
 }
 
@@ -124,6 +131,7 @@ async function unblockArtist(artistId) {
   await apiFetch(`/api/rules/blocked-artists/${artistId}`, { method: "DELETE" });
   await loadRules();
   await loadTracks();
+  pendingChanges.value = true;
 }
 
 function showUndoToast(artistId, artistName) {
@@ -150,11 +158,13 @@ async function addBlockedGenre() {
   });
   newGenre.value = "";
   await loadRules();
+  pendingChanges.value = true;
 }
 
 async function removeBlockedGenre(g) {
   await apiFetch(`/api/rules/blocked-genres/${encodeURIComponent(g)}`, { method: "DELETE" });
   await loadRules();
+  pendingChanges.value = true;
 }
 
 let searchDebounce = null;
@@ -172,10 +182,40 @@ function isArtistBlocked(track) {
   return blockedArtists.value.some((a) => a.artist_id === track.artist_id);
 }
 
+function setSort(key) {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
+  } else {
+    sortKey.value = key;
+    sortDir.value = "asc";
+  }
+}
+
+function startResize(key, event) {
+  resizing = { key, startX: event.clientX, startWidth: columnWidths.value[key] };
+  window.addEventListener("mousemove", onResizeMove);
+  window.addEventListener("mouseup", stopResize);
+}
+
+function onResizeMove(event) {
+  if (!resizing) return;
+  const delta = event.clientX - resizing.startX;
+  columnWidths.value[resizing.key] = Math.max(80, resizing.startWidth + delta);
+}
+
+function stopResize() {
+  resizing = null;
+  window.removeEventListener("mousemove", onResizeMove);
+  window.removeEventListener("mouseup", stopResize);
+}
+
 watch(syncStatus, (next, prev) => {
   if (prev === "syncing" && next !== "syncing") {
     loadTracks();
     loadRules();
+    if (next === "idle") {
+      pendingChanges.value = false;
+    }
   }
 });
 
@@ -183,6 +223,24 @@ const lastSyncedLabel = computed(() => {
   if (!lastSyncTime.value) return "Never synced";
   const d = new Date(Number(lastSyncTime.value) * 1000);
   return `Last synced: ${d.toLocaleString()}`;
+});
+
+const syncHelpText = computed(() =>
+  syncPaused.value
+    ? "Automatic syncing is paused — use Sync Now to sync manually."
+    : "Auto-syncs every 4 hours. Toggle off to pause the automatic schedule."
+);
+
+const sortedTracks = computed(() => {
+  if (!sortKey.value) return tracks.value;
+  const dir = sortDir.value === "asc" ? 1 : -1;
+  return [...tracks.value].sort((a, b) => {
+    const av = (a[sortKey.value] || "").toLowerCase();
+    const bv = (b[sortKey.value] || "").toLowerCase();
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
 });
 </script>
 
@@ -201,6 +259,10 @@ const lastSyncedLabel = computed(() => {
         <p class="text-sm text-gray-400">
           {{ syncStatus === "syncing" ? "Syncing..." : lastSyncedLabel }}
         </p>
+        <p v-if="pendingChanges && syncStatus !== 'syncing'" class="text-xs text-amber-400 mt-0.5">
+          Unsynced changes — click Sync Now to apply them
+        </p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ syncHelpText }}</p>
       </div>
       <div class="flex items-center gap-3">
         <button
@@ -235,7 +297,7 @@ const lastSyncedLabel = computed(() => {
       </div>
     </header>
 
-    <div class="relative mb-4">
+    <div class="relative mb-2">
       <input
         v-model="search"
         type="text"
@@ -245,51 +307,88 @@ const lastSyncedLabel = computed(() => {
       />
       <span
         v-if="searching"
-        class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500"
+        class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400"
       >
         Searching…
       </span>
     </div>
+    <p class="text-xs text-gray-400 mb-2">
+      {{ tracks.length }} track{{ tracks.length === 1 ? "" : "s" }}
+    </p>
 
     <div class="rounded-lg overflow-hidden border border-gray-800">
-      <table class="w-full text-sm">
+      <table class="w-full text-sm table-fixed">
+        <colgroup>
+          <col style="width: 64px" />
+          <col :style="{ width: columnWidths.title + 'px' }" />
+          <col class="hidden sm:table-column" :style="{ width: columnWidths.artist + 'px' }" />
+          <col class="hidden md:table-column" :style="{ width: columnWidths.album + 'px' }" />
+          <col style="width: 96px" />
+        </colgroup>
         <thead class="bg-gray-900 text-gray-400 text-left">
           <tr>
-            <th class="py-3 px-2 w-16"></th>
-            <th class="py-3 px-2">Title</th>
-            <th class="py-3 px-2 hidden sm:table-cell">Artist</th>
-            <th class="py-3 px-2 hidden md:table-cell">Album</th>
-            <th class="py-3 px-2 w-24 text-right">Include</th>
+            <th class="py-3 px-2"></th>
+            <th class="py-3 px-2 relative select-none">
+              <button @click="setSort('title')" class="flex items-center gap-1 hover:text-gray-100">
+                <span>Title</span>
+                <span v-if="sortKey === 'title'" class="text-[10px]">{{ sortDir === "asc" ? "▲" : "▼" }}</span>
+              </button>
+              <span
+                class="hidden sm:block absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-spotify/50"
+                @mousedown="startResize('title', $event)"
+              ></span>
+            </th>
+            <th class="py-3 px-2 hidden sm:table-cell relative select-none">
+              <button @click="setSort('artist_name')" class="flex items-center gap-1 hover:text-gray-100">
+                <span>Artist</span>
+                <span v-if="sortKey === 'artist_name'" class="text-[10px]">{{ sortDir === "asc" ? "▲" : "▼" }}</span>
+              </button>
+              <span
+                class="hidden sm:block absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-spotify/50"
+                @mousedown="startResize('artist', $event)"
+              ></span>
+            </th>
+            <th class="py-3 px-2 hidden md:table-cell relative select-none">
+              <button @click="setSort('album_name')" class="flex items-center gap-1 hover:text-gray-100">
+                <span>Album</span>
+                <span v-if="sortKey === 'album_name'" class="text-[10px]">{{ sortDir === "asc" ? "▲" : "▼" }}</span>
+              </button>
+              <span
+                class="hidden sm:block absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-spotify/50"
+                @mousedown="startResize('album', $event)"
+              ></span>
+            </th>
+            <th class="py-3 px-2 text-right">Include</th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="t in tracks"
+            v-for="t in sortedTracks"
             :key="t.uri"
-            class="border-t border-gray-800 hover:bg-gray-900/50 group"
+            class="border-t border-gray-800 hover:bg-gray-900/50"
             :class="{ 'opacity-40': isArtistBlocked(t) }"
           >
             <td class="p-2">
               <img :src="t.image_url" class="w-12 h-12 rounded object-cover" loading="lazy" />
             </td>
             <td class="p-2">
-              <div class="font-medium">{{ t.title }}</div>
-              <div class="text-xs text-gray-500 sm:hidden flex items-center gap-2 mt-0.5">
-                <span>{{ t.artist_name }}</span>
+              <div class="font-medium truncate">{{ t.title }}</div>
+              <div class="text-xs text-gray-400 sm:hidden flex items-center gap-2 mt-0.5">
+                <span class="truncate">{{ t.artist_name }}</span>
                 <span
                   v-if="isArtistBlocked(t)"
-                  class="text-[10px] uppercase tracking-wide text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded"
+                  class="text-[10px] uppercase tracking-wide text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded shrink-0"
                 >
                   Blocked
                 </span>
-                <button v-else @click="blockArtist(t)" class="underline hover:text-red-400">
+                <button v-else @click="blockArtist(t)" class="underline hover:text-red-400 shrink-0">
                   Block
                 </button>
               </div>
             </td>
             <td class="p-2 hidden sm:table-cell">
               <div class="flex items-center gap-2">
-                <span class="text-left">{{ t.artist_name }}</span>
+                <span class="text-left truncate">{{ t.artist_name }}</span>
                 <span
                   v-if="isArtistBlocked(t)"
                   class="text-[10px] uppercase tracking-wide text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded shrink-0"
@@ -300,13 +399,13 @@ const lastSyncedLabel = computed(() => {
                   v-else
                   @click="blockArtist(t)"
                   title="Block this artist"
-                  class="text-xs text-gray-500 hover:text-red-400 underline shrink-0"
+                  class="text-xs text-gray-400 hover:text-red-400 underline shrink-0"
                 >
                   Block
                 </button>
               </div>
             </td>
-            <td class="p-2 hidden md:table-cell text-gray-400">{{ t.album_name }}</td>
+            <td class="p-2 hidden md:table-cell text-gray-400 truncate">{{ t.album_name }}</td>
             <td class="p-2 text-right">
               <button
                 @click="toggleVisibility(t)"
@@ -327,7 +426,7 @@ const lastSyncedLabel = computed(() => {
           </tr>
         </tbody>
       </table>
-      <p v-if="!tracks.length" class="p-6 text-center text-gray-500">No tracks found.</p>
+      <p v-if="!tracks.length" class="p-6 text-center text-gray-400">No tracks found.</p>
     </div>
 
     <!-- Rules modal -->
@@ -352,12 +451,15 @@ const lastSyncedLabel = computed(() => {
             {{ a.name }}
             <button @click="unblockArtist(a.artist_id)" class="text-gray-400 hover:text-red-400">✕</button>
           </li>
-          <li v-if="!blockedArtists.length" class="text-xs text-gray-500">
+          <li v-if="!blockedArtists.length" class="text-xs text-gray-400">
             None yet — use the "Block" button next to an artist in the table.
           </li>
         </ul>
 
-        <h3 class="text-sm text-gray-400 mb-2">Blocked genres</h3>
+        <h3 class="text-sm text-gray-400 mb-1">Blocked genres</h3>
+        <p class="text-xs text-gray-400 mb-2">
+          Matches an artist's Spotify genre tags — not the track title or lyrics.
+        </p>
         <div class="flex gap-2 mb-2">
           <input
             v-model="newGenre"
