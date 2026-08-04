@@ -11,6 +11,7 @@ const syncStatus = ref("idle");
 const lastIngestTime = ref(null);
 const lastPublishTime = ref(null);
 const syncError = ref("");
+const syncErrorTime = ref(null);
 const playlistId = ref(null);
 const playlistName = ref(null);
 const rulesOpen = ref(false);
@@ -74,6 +75,7 @@ async function loadState() {
   lastIngestTime.value = s.last_ingest_time;
   lastPublishTime.value = s.last_publish_time;
   syncError.value = s.sync_error || "";
+  syncErrorTime.value = s.sync_error_time;
   playlistId.value = s.target_playlist_id;
   playlistName.value = s.target_playlist_name;
 }
@@ -284,6 +286,13 @@ const playlistUrl = computed(() =>
   playlistId.value ? `https://open.spotify.com/playlist/${playlistId.value}` : null
 );
 
+const syncErrorLabel = computed(() => {
+  if (!syncError.value) return "";
+  if (!syncErrorTime.value) return syncError.value;
+  const d = new Date(Number(syncErrorTime.value) * 1000);
+  return `[${d.toLocaleString()}] ${syncError.value}`;
+});
+
 const syncHelpText = computed(() =>
   syncPaused.value
     ? "Automatic syncing is paused — use Sync Now to sync manually."
@@ -341,7 +350,7 @@ const sortedTracks = computed(() => {
           {{ syncStatus === "syncing" ? "Syncing..." : lastIngestLabel }}
         </p>
         <p class="text-sm text-gray-400">{{ lastPublishLabel }}</p>
-        <p v-if="syncError" class="text-xs text-red-400 mt-0.5">{{ syncError }}</p>
+        <p v-if="syncError" class="text-xs text-red-400 mt-0.5">{{ syncErrorLabel }}</p>
         <p v-if="pendingChanges && syncStatus !== 'syncing'" class="text-xs text-amber-400 mt-0.5">
           Unsynced changes — click Sync Now to apply them
         </p>

@@ -115,6 +115,7 @@ def admin_status(_: bool = Depends(auth.require_admin)):
         "last_ingest_time": get_state("last_ingest_time"),
         "last_publish_time": get_state("last_publish_time"),
         "sync_error": get_state("last_sync_error") or None,
+        "sync_error_time": get_state("last_sync_error_time") or None,
         "target_playlist_id": get_state("target_playlist_id"),
         "spotify_linked": get_state("spotify_refresh_token") is not None,
     }
@@ -136,6 +137,7 @@ def get_app_state(user=Depends(auth.require_user)):
         "last_publish_time": get_state("last_publish_time"),
         "sync_status": get_state("sync_status", "idle"),
         "sync_error": get_state("last_sync_error") or None,
+        "sync_error_time": get_state("last_sync_error_time") or None,
         "target_playlist_id": get_state("target_playlist_id"),
         "target_playlist_name": get_state("target_playlist_name"),
     }

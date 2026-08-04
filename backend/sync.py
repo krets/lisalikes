@@ -8,27 +8,32 @@ import spotify_client
 logger = logging.getLogger("sync")
 
 
+def _set_error(message: str):
+    set_state("last_sync_error", message)
+    set_state("last_sync_error_time", int(time.time()) if message else "")
+
+
 async def run_sync():
     if get_state("sync_paused", "0") == "1":
         logger.info("Sync is paused, skipping run")
         return
 
     set_state("sync_status", "syncing")
-    set_state("last_sync_error", "")
+    _set_error("")
 
     try:
         await _ingest()
         set_state("last_ingest_time", int(time.time()))
     except Exception as e:
         set_state("sync_status", "error")
-        set_state("last_sync_error", f"Loading Liked Songs failed: {e}")
+        _set_error(f"Loading Liked Songs failed: {e}")
         logger.exception("Ingest failed")
         raise
 
     playlist_id = get_state("target_playlist_id")
     if not playlist_id:
         set_state("sync_status", "idle")
-        set_state("last_sync_error", "No target playlist is set, so nothing was published.")
+        _set_error("No target playlist is set, so nothing was published.")
         return
 
     uris = _curate()
@@ -39,7 +44,7 @@ async def run_sync():
         set_state("sync_status", "idle")
     except Exception as e:
         set_state("sync_status", "error")
-        set_state("last_sync_error", f"Publishing to the playlist failed: {e}")
+        _set_error(f"Publishing to the playlist failed: {e}")
         logger.exception("Publish failed")
         raise
 
