@@ -322,6 +322,7 @@ const sortedTracks = computed(() => {
           :href="playlistUrl"
           target="_blank"
           rel="noopener noreferrer"
+          title="View playlist on Spotify"
           class="text-sm text-spotify hover:underline inline-block"
         >
           {{ playlistName || "Open target playlist" }} ↗
