@@ -28,7 +28,7 @@ let pollInterval = null;
 let undoTimeout = null;
 let resizing = null;
 
-onMounted(() => {
+onMounted(async () => {
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get("token");
   if (urlToken) {
@@ -37,13 +37,24 @@ onMounted(() => {
     window.history.replaceState({}, "", "/");
   }
   if (token.value) {
-    loadState();
-    loadTracks();
-    loadRules();
-    loadAllTracks();
-    pollInterval = setInterval(loadState, 15000);
+    try {
+      await loadState();
+      restoreBranding();
+      loadTracks();
+      loadRules();
+      loadAllTracks();
+      pollInterval = setInterval(loadState, 15000);
+    } catch {
+      // invalid/expired token — apiFetch already cleared it, stay on the plain landing page
+    }
   }
 });
+
+function restoreBranding() {
+  document.title = "LisaLikes";
+  const favicon = document.getElementById("favicon");
+  if (favicon) favicon.href = "/favicon-real.svg";
+}
 
 async function apiFetch(path, opts = {}) {
   const res = await fetch(path, {
@@ -327,8 +338,7 @@ const sortedTracks = computed(() => {
 <template>
   <div v-if="!token" class="min-h-screen flex items-center justify-center p-6">
     <div class="text-center text-gray-400">
-      <p class="text-lg">No access link detected.</p>
-      <p class="text-sm mt-2">Open this page using the link that was emailed to you.</p>
+      <p class="text-lg">This site is under construction.</p>
     </div>
   </div>
 

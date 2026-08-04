@@ -2,20 +2,24 @@ import logging
 import os
 import secrets
 import smtplib
+import time
 from email.mime.text import MIMEText
 
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel
 
 from db import init_db, get_conn, get_state, set_state
+import admin_panel
 import auth
 import spotify_client
 import sync
 
 app = FastAPI(title="Spotify Curator")
+
+ADMIN_PATH = os.environ["ADMIN_PATH"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,7 +54,7 @@ class InviteRequest(BaseModel):
 
 @app.post("/api/admin/invite")
 def send_invite(req: InviteRequest, _: bool = Depends(auth.require_admin)):
-    token = auth.create_user_token()
+    token = auth.create_user_token(req.email)
     domain = os.environ.get("APP_DOMAIN", "https://yourdomain.com")
     link = f"{domain}/auth?token={token}"
 
@@ -59,9 +63,17 @@ def send_invite(req: InviteRequest, _: bool = Depends(auth.require_admin)):
     smtp_user = os.environ["SMTP_USER"]
     smtp_pass = os.environ["SMTP_PASS"]
 
-    msg = MIMEText(f"Here's your playlist curator link:\n\n{link}\n\nThis link is valid for 30 days.")
-    msg["Subject"] = "Your playlist curator access link"
-    msg["From"] = smtp_user
+    body = (
+        "Hi!\n\n"
+        "You've been invited to help curate the LisaLikes playlist — "
+        "songs get added automatically as they're liked, and you can jump in and help shape it.\n\n"
+        f"Here's your access link:\n{link}\n\n"
+        "This link is valid for 30 days. If it expires, just ask for a new invite.\n\n"
+        "— LisaLikes"
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = "You're invited to curate LisaLikes"
+    msg["From"] = f"LisaLikes <{smtp_user}>"
     msg["To"] = req.email
 
     with smtplib.SMTP(smtp_server, smtp_port) as server:
@@ -117,8 +129,74 @@ def admin_status(_: bool = Depends(auth.require_admin)):
         "sync_error": get_state("last_sync_error") or None,
         "sync_error_time": get_state("last_sync_error_time") or None,
         "target_playlist_id": get_state("target_playlist_id"),
+        "target_playlist_name": get_state("target_playlist_name"),
         "spotify_linked": get_state("spotify_refresh_token") is not None,
     }
+
+
+# ---------- Admin panel (hidden path, cookie session) ----------
+
+class AdminLoginRequest(BaseModel):
+    secret: str
+
+
+@app.get(f"/api/{ADMIN_PATH}", response_class=HTMLResponse)
+def admin_page():
+    return admin_panel.render_page(ADMIN_PATH)
+
+
+@app.post(f"/api/{ADMIN_PATH}/login")
+def admin_login(req: AdminLoginRequest, response: Response):
+    if req.secret != auth.ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+    response.set_cookie(
+        "admin_session",
+        auth.create_admin_session(),
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=auth.ADMIN_SESSION_TTL_SECONDS,
+    )
+    return {"ok": True}
+
+
+@app.post(f"/api/{ADMIN_PATH}/logout")
+def admin_logout(response: Response):
+    response.delete_cookie("admin_session")
+    return {"ok": True}
+
+
+@app.get(f"/api/{ADMIN_PATH}/invites")
+def list_invites(_: bool = Depends(auth.require_admin)):
+    now = int(time.time())
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM invites ORDER BY created_at DESC").fetchall()
+    result = []
+    for r in rows:
+        row = dict(r)
+        if row["revoked_at"]:
+            row["status"] = "revoked"
+        elif row["expires_at"] < now:
+            row["status"] = "expired"
+        else:
+            row["status"] = "active"
+        result.append(row)
+    return result
+
+
+@app.post(f"/api/{ADMIN_PATH}/invites/{{jti}}/revoke")
+def revoke_invite(jti: str, _: bool = Depends(auth.require_admin)):
+    with get_conn() as conn:
+        conn.execute("UPDATE invites SET revoked_at = ? WHERE jti = ?", (int(time.time()), jti))
+        conn.commit()
+    return {"ok": True}
+
+
+@app.get(f"/api/{ADMIN_PATH}/errors")
+def list_errors(_: bool = Depends(auth.require_admin)):
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM error_log ORDER BY id DESC LIMIT 50").fetchall()
+    return [dict(r) for r in rows]
 
 
 # ---------- User-facing (magic link) ----------

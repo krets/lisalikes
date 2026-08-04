@@ -11,6 +11,17 @@ logger = logging.getLogger("sync")
 def _set_error(message: str):
     set_state("last_sync_error", message)
     set_state("last_sync_error_time", int(time.time()) if message else "")
+    if message:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO error_log (message, occurred_at) VALUES (?, ?)",
+                (message, int(time.time())),
+            )
+            conn.execute(
+                "DELETE FROM error_log WHERE id NOT IN "
+                "(SELECT id FROM error_log ORDER BY id DESC LIMIT 50)"
+            )
+            conn.commit()
 
 
 async def run_sync():

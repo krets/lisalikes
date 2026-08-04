@@ -34,6 +34,21 @@ CREATE TABLE IF NOT EXISTS blocked_artists (
 CREATE TABLE IF NOT EXISTS blocked_genres (
     genre_name TEXT PRIMARY KEY
 );
+
+CREATE TABLE IF NOT EXISTS invites (
+    jti TEXT PRIMARY KEY,
+    email TEXT,
+    created_at INTEGER,
+    expires_at INTEGER,
+    last_seen_at INTEGER,
+    revoked_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS error_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT,
+    occurred_at INTEGER
+);
 """
 
 
