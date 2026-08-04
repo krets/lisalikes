@@ -44,6 +44,7 @@ async def exchange_code_for_tokens(code: str):
         set_state("spotify_refresh_token", data["refresh_token"])
         set_state("spotify_access_token", data["access_token"])
         set_state("spotify_access_token_expires_at", int(time.time()) + data["expires_in"])
+        set_state("spotify_granted_scope", data.get("scope", ""))
         return data
 
 
@@ -66,6 +67,8 @@ async def get_valid_access_token() -> str:
         data = resp.json()
         set_state("spotify_access_token", data["access_token"])
         set_state("spotify_access_token_expires_at", int(time.time()) + data["expires_in"])
+        if "scope" in data:
+            set_state("spotify_granted_scope", data["scope"])
         # Spotify sometimes rotates the refresh token
         if "refresh_token" in data:
             set_state("spotify_refresh_token", data["refresh_token"])
