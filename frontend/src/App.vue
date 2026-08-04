@@ -8,7 +8,9 @@ const duplicatesOpen = ref(false);
 const search = ref("");
 const syncPaused = ref(false);
 const syncStatus = ref("idle");
-const lastSyncTime = ref(null);
+const lastIngestTime = ref(null);
+const lastPublishTime = ref(null);
+const syncError = ref("");
 const playlistId = ref(null);
 const playlistName = ref(null);
 const rulesOpen = ref(false);
@@ -69,7 +71,9 @@ async function loadState() {
   const s = await apiFetch("/api/state");
   syncPaused.value = s.sync_paused;
   syncStatus.value = s.sync_status;
-  lastSyncTime.value = s.last_sync_time;
+  lastIngestTime.value = s.last_ingest_time;
+  lastPublishTime.value = s.last_publish_time;
+  syncError.value = s.sync_error || "";
   playlistId.value = s.target_playlist_id;
   playlistName.value = s.target_playlist_name;
 }
@@ -264,10 +268,16 @@ watch(syncStatus, (next, prev) => {
   }
 });
 
-const lastSyncedLabel = computed(() => {
-  if (!lastSyncTime.value) return "Never synced";
-  const d = new Date(Number(lastSyncTime.value) * 1000);
-  return `Last synced: ${d.toLocaleString()}`;
+const lastIngestLabel = computed(() => {
+  if (!lastIngestTime.value) return "Liked Songs never loaded";
+  const d = new Date(Number(lastIngestTime.value) * 1000);
+  return `Liked Songs loaded: ${d.toLocaleString()}`;
+});
+
+const lastPublishLabel = computed(() => {
+  if (!lastPublishTime.value) return "Playlist never published";
+  const d = new Date(Number(lastPublishTime.value) * 1000);
+  return `Playlist published: ${d.toLocaleString()}`;
 });
 
 const playlistUrl = computed(() =>
@@ -328,8 +338,10 @@ const sortedTracks = computed(() => {
           {{ playlistName || "Open target playlist" }} ↗
         </a>
         <p class="text-sm text-gray-400">
-          {{ syncStatus === "syncing" ? "Syncing..." : lastSyncedLabel }}
+          {{ syncStatus === "syncing" ? "Syncing..." : lastIngestLabel }}
         </p>
+        <p class="text-sm text-gray-400">{{ lastPublishLabel }}</p>
+        <p v-if="syncError" class="text-xs text-red-400 mt-0.5">{{ syncError }}</p>
         <p v-if="pendingChanges && syncStatus !== 'syncing'" class="text-xs text-amber-400 mt-0.5">
           Unsynced changes — click Sync Now to apply them
         </p>

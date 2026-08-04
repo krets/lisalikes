@@ -14,17 +14,33 @@ async def run_sync():
         return
 
     set_state("sync_status", "syncing")
+    set_state("last_sync_error", "")
+
     try:
         await _ingest()
-        uris = _curate()
-        playlist_id = get_state("target_playlist_id")
-        if playlist_id and uris:
-            await spotify_client.publish_playlist(playlist_id, uris)
-        set_state("last_sync_time", int(time.time()))
-        set_state("sync_status", "idle")
-    except Exception:
+        set_state("last_ingest_time", int(time.time()))
+    except Exception as e:
         set_state("sync_status", "error")
-        logger.exception("Sync run failed")
+        set_state("last_sync_error", f"Loading Liked Songs failed: {e}")
+        logger.exception("Ingest failed")
+        raise
+
+    playlist_id = get_state("target_playlist_id")
+    if not playlist_id:
+        set_state("sync_status", "idle")
+        set_state("last_sync_error", "No target playlist is set, so nothing was published.")
+        return
+
+    uris = _curate()
+    try:
+        if uris:
+            await spotify_client.publish_playlist(playlist_id, uris)
+        set_state("last_publish_time", int(time.time()))
+        set_state("sync_status", "idle")
+    except Exception as e:
+        set_state("sync_status", "error")
+        set_state("last_sync_error", f"Publishing to the playlist failed: {e}")
+        logger.exception("Publish failed")
         raise
 
 
