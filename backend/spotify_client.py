@@ -128,7 +128,7 @@ async def publish_playlist(playlist_id: str, uris: list[str]):
 
     await _request(
         "PUT",
-        f"/playlists/{playlist_id}/tracks",
+        f"/playlists/{playlist_id}/items",
         json={"uris": first_batch},
     )
 
@@ -136,6 +136,6 @@ async def publish_playlist(playlist_id: str, uris: list[str]):
         chunk = rest[i : i + 100]
         await _request(
             "POST",
-            f"/playlists/{playlist_id}/tracks",
+            f"/playlists/{playlist_id}/items",
             json={"uris": chunk},
         )
